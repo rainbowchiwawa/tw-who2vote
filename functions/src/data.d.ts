@@ -16,7 +16,7 @@ declare type PartialGroupData = {year: number} & ({
     district: string
 })
 
-declare type GroupData = PartialGroupData & {pending: boolean, expiredAt: number|null}
+declare type GroupData = PartialGroupData & {expiredAt: number|null}
 
 interface CandidaData {
     groupId: string
