@@ -1,0 +1,38 @@
+{
+  "name": "functions",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "@google/genai": "^1.40.0",
+    "@lit-labs/signals": "^0.2.0",
+    "@material/web": "^2.4.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@types/express": "^5.0.6",
+    "ajv": "^8.17.1",
+    "connect-timeout": "^1.9.1",
+    "dayjs": "^1.11.19",
+    "dotenv": "^17.2.4",
+    "esbuild-loader": "^4.4.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.0.1",
+    "lit": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/connect-timeout": "^1.9.0",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.9.3"
+  },
+  "private": true
+}

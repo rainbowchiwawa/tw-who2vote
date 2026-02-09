@@ -1,0 +1,39 @@
+import express, { Request, Response } from 'express'
+import { validator } from './validator'
+import { Gemini } from './service'
+
+const router = express.Router()
+
+function defRoute<T extends keyof AjaxRequest>(
+    target: T,
+    handler: (req: Request<any, any, AjaxRequest[T]>, res: Response<AjaxResponseType<T>>) => Promise<unknown>
+) {
+    return router.post(`/api/${target}`, async (req, res) => {
+        if(!validator[target](req.body)) {
+            res.sendStatus(400)
+            return
+        }
+        await handler(req, res)
+    })
+}
+
+defRoute('start', async (req, res) => {
+    const {type, year} = req.body
+    switch(type) {
+        case '總統':
+        case '立法委員':
+            if(year % 4 !== 0) return res.sendStatus(400)
+            break
+        default:
+            if(year % 4 !== 2) return res.sendStatus(400)
+    }
+    const questions = await Gemini.generateCandidateQuestions(req.body)
+    if(!questions) return res.sendStatus(404)
+    return res.send({questions: questions.sort(() => Math.round(Math.random() * 2) - 1)})
+})
+
+defRoute('submit', async (req, res) => {
+    
+})
+
+export default router
