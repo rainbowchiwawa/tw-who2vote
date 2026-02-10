@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { validator } from './validator'
-import { Gemini } from './service'
+import { Gemini, Util } from './service'
 
 const router = express.Router()
 
@@ -28,8 +28,7 @@ defRoute('start', async (req, res) => {
             if(year % 4 !== 2) return res.sendStatus(400)
     }
     const questions = await Gemini.generateCandidateQuestions(req.body)
-    if(!questions) return res.sendStatus(404)
-    return res.send({questions: questions.sort(() => Math.round(Math.random() * 2) - 1)})
+    return res.send({questions: Util.shuffle(questions)})
 })
 
 defRoute('submit', async (req, res) => {

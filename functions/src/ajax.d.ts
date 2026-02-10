@@ -10,10 +10,11 @@ interface AjaxResponse {
         questions: Pick<Selectable<DeedData>, 'id'|'question'>[]
     }
     'submit': {
-        candidates: (CandidaData & {
+        candidates: (Omit<Selectable<CandidaData>, 'groupId'> & {
             score: number
-            positiveDeeds: DeedData[]
-            negativeDeeds: DeedData[]
+            picURL: string
+            positiveDeeds: Omit<DeedData, 'groupId'|'candidateId'>[]
+            negativeDeeds: Omit<DeedData, 'groupId'|'candidateId'>[]
         })[]
     }
 }

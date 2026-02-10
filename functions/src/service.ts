@@ -1,17 +1,25 @@
 import { FunctionCallingConfigMode, FunctionDeclaration, GoogleGenAI } from "@google/genai";
 import Ajv from "ajv";
 import dayjs from "dayjs";
-import { getFirestore } from "firebase-admin/firestore";
+import { DocumentReference, getFirestore } from "firebase-admin/firestore";
 import { prompts } from "./prompt";
+import path from "path";
+import lockfile from 'proper-lockfile'
+
+const ajv = new Ajv()
 
 export namespace Database {
     
     const db = getFirestore()
 
-    export async function init() {
-        const snapshots = await db.collection('group').where('pending', '==', true).get()
+    export async function clearPendingGroup(groupId?: string) {
+        if(groupId) {
+            await db.collection('group').doc(groupId).delete()
+            return
+        }
+        const snapshots = await db.collection('group').where('expiredAt', '==', null).get()
         for(const {ref} of snapshots.docs) {
-            await ref.update({pending: false})
+            await ref.delete()
         }
     }
 
@@ -39,16 +47,17 @@ export namespace Database {
 
     export async function createGroup(insertData: PartialGroupData) {
         const {year, type, city, district} = insertData
-        const group = await db
+        const groups = await db
             .collection('group')
             .where('year', '==', year)
             .where('type', '==', type)
             .where('city', '==', city)
             .where('district', '==', district)
-            .where('expiredAt', '==', null)
+            .where('expiredAt', '>', dayjs().valueOf())
             .limit(1)
             .get()
-        if(!group.empty) return null
+
+        if(!groups.empty) return null
         return await db.collection('group').add({...insertData, expiredAt: null})
     }
 
@@ -58,8 +67,12 @@ export namespace Database {
         })
     }
 
-    export async function insertCandidateData(groupId: string, {name, party, deeds}: CandidaData & {deeds: Omit<DeedData, 'groupId'|'candidateId'>[]}) {
-        const candidateRef = await db.collection('candidate').add({groupId, name, party: party.toLowerCase()})
+    export async function insertCandidateData(
+        groupId: string,
+        {name, party, deeds}: CandidaData & {deeds: Omit<DeedData, 'groupId'|'candidateId'>[]}
+    ) {
+        const candidateRef = await db.collection('candidate').add({groupId, name, party})
+        await db.collection('picture').doc(candidateRef.id).set({url: await WikiQuery.getCandidatePicture(party, name)})
         for(const deed of deeds) {
             await db.collection('deed').add({groupId, candidateId: candidateRef.id, ...deed})
         }
@@ -77,7 +90,6 @@ export namespace Database {
 
 export namespace Gemini {
 
-    const ajv = new Ajv()
     const instance = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY})
 
     namespace InsertCandidateData {
@@ -91,6 +103,9 @@ export namespace Gemini {
                 party: {
                     type: 'string'
                 },
+                status: {
+                    type: 'string'
+                },
                 deeds: {
                     type: 'array',
                     items: {
@@ -99,17 +114,14 @@ export namespace Gemini {
                             description: {
                                 type: 'string'
                             },
-                            sourceURLs: {
-                                type: 'array',
-                                items: {
-                                    type: 'string'
-                                }
+                            keyword: {
+                                type: 'string'
                             },
                             question: {
                                 type: 'string'
                             }
                         },
-                        required: ['description', 'sourceURLs', 'question']
+                        required: ['description', 'keyword', 'question']
                     }
                 }
             },
@@ -133,59 +145,160 @@ export namespace Gemini {
 
     }
 
-    export async function generateCandidateQuestions(data: PartialGroupData) {
+    export async function generateCandidateQuestions(data: PartialGroupData): Promise<{id: string, question: string}[]> {
 
-        async function generate() {
-            const group = await Database.createGroup(data)
-            if(!group) return null
+        async function generate(group?: DocumentReference|null, retry = 3, release?: () => void) {
+            if(!retry) {
+                await Database.clearPendingGroup(group?.id)
+                release?.()
+                throw new Error()
+            }
+
+            if(!release) release = await FileLock.acquire()
+            group = await Database.createGroup(data)
+            if(!group) {
+                release()
+                await new Promise<void>(resolve => setTimeout(resolve, 1000))
+                return await generateCandidateQuestions(data)
+            }
 
             const {id: groupId} = group
             const {year, type, city, district} = data
             try {
                 const {text} = await instance.models.generateContent({
                     model: 'gemini-3-pro-preview',
-                    config: {tools: [{googleSearch: {}}]},
-                    contents: [
-                        {role: 'user', parts: [{text: prompts.get('makeQuestionaire')}]},
-                        {role: 'user', parts: [{text: `${year}年  中華民國 ${city ?? ''} ${district ?? ''} ${type} 候選人`}]}
-                    ]
+                    config: {tools: [{googleSearch: {}}], systemInstruction: prompts.get('makeQuestionaire')?.split('\n')},
+                    contents: [{role: 'user', parts: [{text: `${year}年  中華民國 ${city ?? ''} ${district ?? ''} ${type} 候選人`}]}]
                 })
                 if(!text) throw new Error()
 
-                console.log(text)
                 const {functionCalls} = await instance.models.generateContent({
                     model: 'gemini-2.5-pro',
-                    config: InsertCandidateData.config,
-                    contents: [
-                        {role: 'user', parts: [{text: prompts.get('insertCandidateData')}]},
-                        {role: 'user', parts: [{text}]}
-                    ]
+                    config: {...InsertCandidateData.config, systemInstruction: prompts.get('insertCandidateData')?.split('\n')},
+                    contents: [{role: 'user', parts: [{text}]}]
                 })
                 if(!functionCalls) throw new Error()
 
                 for(const {name, args} of functionCalls) {
                     if(name !== 'insertCandidateData') continue
-                    console.log(args)
                     if(!args) throw new Error()
                     if(!InsertCandidateData.validator(args)) throw new Error()
                     await Database.insertCandidateData(groupId, args)
                 }
                 await Database.updateGroupExpiredAt(groupId)
+                release()
                 return await Database.getCandidateQuestions(groupId)
             } catch(e) {
-                return null
-            }
+                return await generate(group, retry - 1, release)
+            } 
         }
 
         const group = await Database.getLastestGroup(data)
-
-        if(group === null) {
-            return await generate()
-        }
+        if(group === null) return await generate()
 
         const {expiredAt} = group
         if(dayjs().valueOf() > expiredAt) generate()
         
         return await Database.getCandidateQuestions(group.id)
+    }
+}
+
+export namespace FileLock {
+
+    const lockFilePath = path.resolve('./lock')
+    
+    export async function acquire() {
+        return new Promise<() => void>(resolve => {
+            const interval = setInterval(async () => {
+                try {
+                    const release = await lockfile.lock(lockFilePath)
+                    clearInterval(interval)
+                    resolve(() => {release()})
+                } catch(e) {
+                }
+            }, 3000)
+        })
+    }
+}
+
+export namespace WikiQuery {
+
+    const validator = ajv.compile<{
+        results: {
+            bindings: {
+                pic: {value: string}
+            }[]
+        }
+    }>({
+        type: 'object',
+        properties: {
+            results: {
+                type: 'object',
+                properties: {
+                    bindings: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                pic: {
+                                    type: 'object',
+                                    properties: {
+                                        value: {
+                                            type: 'string'
+                                        }
+                                    },
+                                    required: ['value']
+                                }
+                            },
+                            required: ['pic']
+                        }
+                    }
+                },
+                required: ['bindings']
+            }
+        },
+        required: ['results']
+    })
+
+    export async function getCandidatePicture(party: string, name: string) {
+        try {
+            const params = new URLSearchParams({
+                format: 'json',
+                query: `
+                    SELECT ?pic WHERE {
+                        ?party rdfs:label "${party}"@zh-hant.
+                        ?person rdfs:label "${name}"@zh-hant.
+                        ?person wdt:P18 ?pic.
+                    } LIMIT 1`
+            })
+            const res = await fetch(`https://query.wikidata.org/bigdata/namespace/wdq/sparql?${params}`, {
+                method: 'GET',
+                headers: {'User-Agent': 'PostmanRuntime/7.51.1'}
+            })
+            const json = await res.json()
+            if(!validator(json)) return null
+
+            const binding = json.results.bindings.at(0)
+            if(!binding) return null
+
+            return binding.pic.value
+        } catch(e) {
+            return null
+        }
+    }
+}
+
+export namespace Util {
+
+    export function shuffle<T>(arr: T[]) {
+        const set = new Set(arr.map((_, i) => i))
+        const output = new Array<T>()
+        while(set.size) {
+            const idx = Math.floor(Math.random() * set.size)
+            const i = Array.from(set.values())[idx]
+            output.push(arr[i])
+            set.delete(i)
+        }
+        return output
     }
 }

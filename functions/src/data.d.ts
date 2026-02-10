@@ -22,13 +22,14 @@ interface CandidaData {
     groupId: string
     name: string
     party: string
+    status: string
 }
 
 interface DeedData {
     groupId: string
     candidateId: string
     description: string
-    sourceURLs: string[]
+    keyword: string
     question: string
 }
 

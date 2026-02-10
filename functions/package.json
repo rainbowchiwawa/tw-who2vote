@@ -27,10 +27,12 @@
     "express": "^5.2.1",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1",
-    "lit": "^3.3.2"
+    "lit": "^3.3.2",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "@types/connect-timeout": "^1.9.0",
+    "@types/proper-lockfile": "^4.1.4",
     "firebase-functions-test": "^3.1.0",
     "typescript": "^5.9.3"
   },
