@@ -33,14 +33,14 @@ export const validator: {[key in keyof AjaxRequest]: ValidateFunction<AjaxReques
                 items: {
                     type: 'object',
                     properties: {
-                        questionId: {
+                        id: {
                             type: 'string'
                         },
                         value: {
                             type: 'integer'
                         }
                     },
-                    required: ['questionId', 'value'],
+                    required: ['id', 'value'],
                     additionalProperties: false
                 }
             }

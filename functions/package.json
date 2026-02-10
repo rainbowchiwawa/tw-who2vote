@@ -34,7 +34,8 @@
     "@types/connect-timeout": "^1.9.0",
     "@types/proper-lockfile": "^4.1.4",
     "firebase-functions-test": "^3.1.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "webpack-cli": "^6.0.1"
   },
   "private": true
 }

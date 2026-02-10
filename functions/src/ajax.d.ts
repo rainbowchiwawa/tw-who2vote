@@ -1,7 +1,7 @@
 interface AjaxRequest {
     'start': PartialGroupData
     'submit': {
-        answers: {questionId: string, value: number}[]
+        answers: {id: string, value: number}[]
     }
 }
 
@@ -10,11 +10,10 @@ interface AjaxResponse {
         questions: Pick<Selectable<DeedData>, 'id'|'question'>[]
     }
     'submit': {
-        candidates: (Omit<Selectable<CandidaData>, 'groupId'> & {
+        candidates: (Omit<Selectable<CandidaData>, 'id'|'groupId'> & {
             score: number
-            picURL: string
-            positiveDeeds: Omit<DeedData, 'groupId'|'candidateId'>[]
-            negativeDeeds: Omit<DeedData, 'groupId'|'candidateId'>[]
+            picURL: string|null
+            deeds: (Omit<DeedData, 'groupId'|'candidateId'> & {value: number})[]
         })[]
     }
 }

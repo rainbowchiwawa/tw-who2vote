@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { validator } from './validator'
-import { Gemini, Util } from './service'
+import { Database, Gemini, Util } from './service'
 
 const router = express.Router()
 
@@ -32,7 +32,9 @@ defRoute('start', async (req, res) => {
 })
 
 defRoute('submit', async (req, res) => {
-    
+    const {answers} = req.body
+    const candidates = await Database.calculateScore(answers)
+    return res.send({candidates: candidates.sort((a, b) => b.score - a.score)})
 })
 
 export default router

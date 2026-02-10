@@ -86,6 +86,39 @@ export namespace Database {
             return {id: v.id, question}
         })
     }
+
+    export async function calculateScore(answers: {id: string, value: number}[]) {
+        const answer = answers.at(0)
+        if(!answer) return []
+
+        const questionSnapshot = await db.collection('deed').doc(answer.id).get()
+        if(!questionSnapshot.exists) return []
+
+        const {groupId} = questionSnapshot.data()!
+        if(typeof groupId !== 'string') return []
+
+        const groupSnapshot = await db.collection('group').doc(groupId).get()
+        if(!groupSnapshot.exists) return []
+
+        const candidateSnapshots = await db.collection('candidate').where('groupId', '==', groupSnapshot.id).get()
+        const deedSnapshots = await db.collection('deed').where('groupId', '==', groupSnapshot.id).get()
+
+        const candidates = candidateSnapshots.docs.map<Selectable<CandidaData>>(doc => ({id: doc.id, ...doc.data() as CandidaData}))
+        const deeds = deedSnapshots.docs.map<Selectable<DeedData>>(doc => ({id: doc.id, ...doc.data() as DeedData}))
+
+        return await Promise.all(candidates.map(async ({name, party, status, ...candidate}) => {
+            const picSnapshot = await db.collection('picture').doc(candidate.id).get()
+            const filteredDeeds = deeds
+                .filter(v => v.candidateId === candidate.id)
+                .map(({id, description, keyword, question}) => ({description, keyword, question, value: answers.find(v => v.id === id)?.value ?? 0}))
+            const score = filteredDeeds.reduce((p, {value}) => p + value, 0) / filteredDeeds.length * 25 + 50
+            return {
+                name, party, status, score,
+                picURL: picSnapshot.get('url') ?? null,
+                deeds: filteredDeeds
+            }
+        }))
+    }
 }
 
 export namespace Gemini {
