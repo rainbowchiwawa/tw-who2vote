@@ -158,7 +158,7 @@ export namespace Gemini {
                     }
                 }
             },
-            required: ['name', 'party', 'deeds']
+            required: ['name', 'party', 'status', 'deeds']
         }
 
         const declaration: FunctionDeclaration = {

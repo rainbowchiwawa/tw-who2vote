@@ -8,6 +8,7 @@ import '@material/web/radio/radio.js'
 import { MdOutlinedSelect } from "@material/web/select/outlined-select.js";
 import dayjs from "dayjs";
 import { customElement } from "lit/decorators.js";
+import { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 
 const endpoint = 'http://127.0.0.1:5001/tw-who2vote/us-central1/https'
 
@@ -29,7 +30,7 @@ export class W2VApp extends SignalWatcher(LitElement) {
     readonly groupTypes = <const>['總統', '直轄市長']
     readonly groupCities = <const>['台北市', '新北市', '桃園市', '台中市', '台南市', '高雄市']
 
-    readonly groupYear = new Signal.State<number>(dayjs().year())
+    readonly groupYear = new Signal.State<number>(Math.round(dayjs().year() / 2) * 2)
     readonly groupType = new Signal.State<typeof this.groupTypes[number]>('總統')
     readonly groupCity = new Signal.State<typeof this.groupCities[number]|null>(null)
 
@@ -50,7 +51,13 @@ export class W2VApp extends SignalWatcher(LitElement) {
         this.candidates.set(candidates)
     }
 
+    getKeyword(name: string, keyword: string) {
+        if(keyword.includes(name)) return keyword
+        return `${name} ${keyword}`
+    }
+
     override render() {
+        const year= this.groupYear.get()
         const type = this.groupType.get()
         const questions = this.questions.get()
         const candidates = this.candidates.get()
@@ -59,12 +66,15 @@ export class W2VApp extends SignalWatcher(LitElement) {
                 ${candidates.map(candidate => html`
                     <div>
                         <h1>${`${candidate.score}%`}</h1>
-                        <p>${candidate.party}</p>
-                        <b>${candidate.name}</b>
+                        <p>${candidate.party}&nbsp;<b>${candidate.name}</b></p>
+                        <p>${candidate.status}</p>
                         <img height="300px" src=${candidate.picURL ?? ''} />
                         <ul>
                             ${candidate.deeds.map(deed => html`
-                                <li>${deed.value > 0 ? '✅' : deed.value < 0 ? '❌' : '🤔'}&nbsp;${deed.description}&nbsp;<a href=${`https://google.com/search?q=${deed.keyword}`}>查看相關新聞</a></li>
+                                <li>
+                                    <p>${deed.value > 0 ? '✅' : deed.value < 0 ? '❌' : '🤔'}&nbsp;${deed.description}&nbsp;<a href=${`https://google.com/search?q=${this.getKeyword(candidate.name, deed.keyword)}`}>查看相關新聞</a></p>
+                                    <i>${deed.question}</i>
+                                </li>
                             `)}
                         </ul>
                     </div>    
@@ -79,7 +89,7 @@ export class W2VApp extends SignalWatcher(LitElement) {
                         <form>
                             ${[2, 1, 0, -1, -2].map((value, i) => html`
                                 <md-radio id=${`radio_${question.id}`} name=${question.id} value=${value} @click=${() => question.value = value}></md-radio>
-                                <label for=${`radio_${question.id}`}>${['非常同意', '同意', '普通', '不同意', '非常不同意'][i]}</label>
+                                <label for=${`radio_${question.id}`}>${['嚴厲支持', '感覺還行', '不知道', '感覺不好', '嚴厲斥責'][i]}</label>
                             `)}
                         </form>
                     </div>
@@ -88,7 +98,7 @@ export class W2VApp extends SignalWatcher(LitElement) {
             `
         }
         return html`
-            <md-outlined-field></md-outlined-field>
+            <md-outlined-text-field value=${year} type="number" step=${2} min=${2010} max=${dayjs().add(1, 'year').year()} @change=${(e: {target: MdOutlinedTextField}) => this.groupYear.set(parseInt(e.target.value))}></md-outlined-text-field>
             <md-outlined-select @change=${(e: {target: MdOutlinedSelect}) => this.groupType.set(e.target.value as any)}>
                 ${this.groupTypes.map(v => html`<md-select-option value=${v}>${v}</md-select-option>`)}
             </md-outlined-select>
